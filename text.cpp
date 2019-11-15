@@ -2,12 +2,11 @@
 #include <iostream>
 
 Text::Text(SDL_Renderer *gRenderer,
-		const std::string &font_path,
-		 int font_size,
 		 const std::string &message_text,
-		 const SDL_Color &color)
+		 const SDL_Color &color,
+		 TTF_Font *font)
 {
-	_text_texture=loadFont(gRenderer, font_path, font_size, message_text, color);
+	_text_texture=loadFont(gRenderer, message_text, color, font);
 	SDL_QueryTexture(_text_texture, nullptr, nullptr, &_text_rect.w, &_text_rect.h);
 }
 
@@ -17,8 +16,7 @@ void Text::render(SDL_Renderer *gRenderer, int x, int y) const{
 	SDL_RenderCopy(gRenderer, _text_texture, nullptr, &_text_rect);
 }
 
- SDL_Texture *Text::loadFont(SDL_Renderer *gRenderer, const std::string &font_path, int font_size, const std::string &message_text, const SDL_Color &color){
- 	static TTF_Font *font= TTF_OpenFont(font_path.c_str(), font_size);
+ SDL_Texture *Text::loadFont(SDL_Renderer *gRenderer, const std::string &message_text, const SDL_Color &color, TTF_Font *font){
  	if(!font) {
 		printf("TTF_Init: %s\n", TTF_GetError());
  		std::cerr<<"failed to load font\n";

@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cmath>
 #include <SDL_image.h>
+#include "bullet.h"
 
 class Missile
 {
@@ -24,6 +25,7 @@ class Missile
 		double calculate_damage(double entity_x, double entity_y);
 
         bool checkCollision(Missile* m);
+        bool checkCollision(Bullet *b);
 
         bool ricochet();
 

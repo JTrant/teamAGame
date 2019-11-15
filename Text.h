@@ -7,11 +7,11 @@
 
 class Text{
 public:
-	Text(SDL_Renderer *gRenderer, const std::string &font_path, int font_size, const std::string &message_text, const SDL_Color &color);
+	Text(SDL_Renderer *gRenderer, const std::string &message_text, const SDL_Color &color, TTF_Font *);
 
 	void render(SDL_Renderer *gRenderer, int x, int y) const;
 
-	static SDL_Texture *loadFont(SDL_Renderer *gRenderer, const std::string &font_path, int font_size, const std::string &message_text, const SDL_Color &color);
+	static SDL_Texture *loadFont(SDL_Renderer *gRenderer, const std::string &message_text, const SDL_Color &color, TTF_Font *);
 
 
 private:

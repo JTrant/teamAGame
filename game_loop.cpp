@@ -288,6 +288,15 @@ void check_missile_collisions()
 					missiles.erase(missiles.begin() + j);
 				}
 			}
+
+			for(int j = 0; j < bullets.size();j++){
+				if(missiles[i]->checkCollision(bullets[j])){
+					destroyed = true;
+					bullets[j]->~Bullet();
+					delete bullets[j];
+					bullets.erase(bullets.begin() + j);
+				}
+			}
 			double player_distance = missiles[i]->calculate_distance(player->getPosX(), player->getPosY());
 			double enemy_distance = missiles[i]->calculate_distance(en->getX(), en->getY());
 
@@ -385,6 +394,8 @@ int main() {
 		SDL_RenderPresent(gRenderer);
 	}
 
+	static TTF_Font *font_20 = TTF_OpenFont("sprites/comic.ttf", 20);
+	static TTF_Font *font_16 = TTF_OpenFont("sprites/comic.ttf", 16);
 	blocks = new MapBlocks(LEVEL_WIDTH, LEVEL_HEIGHT, gRenderer, CaveSystem::CAVE_SYSTEM_FREQ, CaveBlock::CAVE_SYSTEM_PIXEL_WIDTH, openAir, openAirLength, difficulty);
 
 	//Start the player on the left side of the screen
@@ -619,27 +630,27 @@ int main() {
 			fps_last_time = fps_cur_time;
 			framecount = 0;
 		}
-		Text fps_text(gRenderer, "sprites/comic.ttf", 16, fps, {255,255,255,255});
+		Text fps_text(gRenderer, fps, {255, 255, 255, 255}, font_16);
 		fps_text.render(gRenderer,20,20);
 
 		score = "Score: ";
 		score.append(std::to_string(getScore()));
-		Text score_text(gRenderer, "sprites/comic.ttf", 16, score, {255, 255, 255, 255});
+		Text score_text(gRenderer, score, {255, 255, 255, 255}, font_16);
 		score_text.render(gRenderer, SCREEN_WIDTH - 130, 7);
 
 		high_score_string = "High Score: ";
 		high_score_string.append(std::to_string(high_score));
-		Text high_score_text(gRenderer, "sprites/comic.ttf", 16, high_score_string, {255, 255, 255, 255});
+		Text high_score_text(gRenderer, high_score_string, {255, 255, 255, 255}, font_16);
 		high_score_text.render(gRenderer, SCREEN_WIDTH - 130, 32);
 
 		std::string health_string = "Health ";
 		std::string back_gun = "Back Gun";
 		std::string front_gun = "Front Gun";
-		Text healthText(gRenderer, "sprites/comic.ttf", 20, health_string, {255, 255, 255, 255});
+		Text healthText(gRenderer, health_string, {255, 255, 255, 255}, font_16);
 		healthText.render(gRenderer, 140, SCREEN_HEIGHT - 52);
-		Text backText(gRenderer, "sprites/comic.ttf", 20, back_gun, {255, 255, 255, 255});
+		Text backText(gRenderer, back_gun, {255, 255, 255, 255}, font_16);
 		backText.render(gRenderer, 670, SCREEN_HEIGHT - 52);
-		Text frontText(gRenderer, "sprites/comic.ttf", 20, front_gun, {255, 255, 255, 255});
+		Text frontText(gRenderer, front_gun, {255, 255, 255, 255}, font_16);
 		frontText.render(gRenderer, 960, SCREEN_HEIGHT - 52);
 
 		int health = player->getHealth();
