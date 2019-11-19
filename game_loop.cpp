@@ -24,6 +24,7 @@ constexpr int SCREEN_HEIGHT = 720;
 constexpr int LEVEL_WIDTH = 100000;
 constexpr int LEVEL_HEIGHT = 2000;
 constexpr int SCROLL_SPEED = 420;
+constexpr int BG_SCROLL_SPEED = 200;
 constexpr int FLOOR_BOTTOM = 720-79;
 constexpr int ROOF_TOP = 73;
 
@@ -36,9 +37,10 @@ void close();
 SDL_Window* gWindow = nullptr;
 SDL_Renderer* gRenderer = nullptr;
 
-// X and y positions of the camera
+// X and y positions of the camera, and background loading position
 double camX = 0;
 double camY = LEVEL_HEIGHT - SCREEN_HEIGHT;
+double bg_x = 0;
 
 Player * player;
 MapBlocks *blocks;
@@ -53,12 +55,18 @@ Kamikaze* kam;
 bool caveCounterHelp = false;
 bool prev_kam = false;
 
+// Background image
+SDL_Texture* gBackground;
+
 // Music stuff
 Mix_Music *trash_beat = NULL;
 Mix_Music* main_track = NULL;
 Mix_Music* start_track = NULL;
 int current_track = -1;
 
+// Variables to indicate that the player has been destroyed
+bool playerDestroyed = false;
+int time_destroyed;
 
 // Scrolling-related times so that scroll speed is independent of framerate
 int time_since_horiz_scroll;
@@ -142,8 +150,11 @@ Mix_Music* loadMusic(std::string fname) {
 void close() {
 	SDL_DestroyRenderer(gRenderer);
 	SDL_DestroyWindow(gWindow);
+	SDL_DestroyTexture(gBackground);
 
 	Mix_FreeMusic(trash_beat);
+	Mix_FreeMusic(main_track);
+	Mix_FreeMusic(start_track);
 
 	gWindow = nullptr;
 	gRenderer = nullptr;
@@ -169,14 +180,18 @@ void moveEnemy(Enemy * en, Kamikaze* kam) {
 	std::vector<int> turretX;
 	std::vector<int> turretBottom;
 	std::vector<int> turretH;
-	// std::vector<int> kamiX;
-	// std::vector<int> kamiY;
-	// std::vector<FlyingBlock> kamikazes = blocks->getKamikazes();
 	for (int i = 0; i < bullets.size(); i++) {
 		bulletX.push_back(bullets[i]->getX());
 		bulletY.push_back(bullets[i]->getY());
 		bulletVelX.push_back(bullets[i]->getXVel());
 		bulletVelY.push_back(bullets[i]->getYVel());
+	}
+	// For now, just have the AI treat missiles as bullets
+	for (int i = 0; i < missiles.size(); i++) {
+		bulletX.push_back(missiles[i]->getX());
+		bulletY.push_back(missiles[i]->getY());
+		bulletVelX.push_back(missiles[i]->getXVel());
+		bulletVelY.push_back(missiles[i]->getYVel());
 	}
 	std::vector<Stalagmite> stalagmites = blocks->getStalagmites();
 	std::vector<Stalagtite> stalagtites = blocks->getStalagtites();
@@ -200,12 +215,7 @@ void moveEnemy(Enemy * en, Kamikaze* kam) {
 			turretH.push_back(turrets[i].BLOCK_HEIGHT + WallBlock::block_side);
 		}
 	}
-	// for (int i = 0; i < kamikazes.size(); i++) {
-	// 	if (kamikazes[i].getRelX() > 0 && kamikazes[i].getRelX() < SCREEN_WIDTH && kamikazes[i].getRelY() > 0 && kamikazes[i].getRelY() < SCREEN_HEIGHT) {
-	// 		kamiX.push_back(kamikazes[i].getRelX() + kamikazes[i].BLOCK_WIDTH/2);
-	// 		kamiY.push_back(kamikazes[i].getRelY() + kamikazes[i].BLOCK_HEIGHT/2);
-	// 	}
-	// }
+
 	int kamiX = kam->getX();
 	int kamiY = kam->getY();
 	PathSequence * path = cave_system->getPathSequence();
@@ -231,18 +241,21 @@ void moveEnemy(Enemy * en, Kamikaze* kam) {
 
 int getScore(){ return (int) (camX / 100); }
 
-void saveHighScore()
+void saveHighScore(int difficulty)
 {
+	std::string highscore_filename = "highscore_";
+	highscore_filename.append(std::to_string(difficulty));
 	std::ofstream highscore_file;
-	highscore_file.open("highscore", std::ofstream::out | std::ofstream::trunc);
+	highscore_file.open(highscore_filename, std::ofstream::out | std::ofstream::trunc);
 	highscore_file << std::to_string(getScore());
 	highscore_file.close();
-
 }
 
-int readHighScore()
+int readHighScore(int difficutly)
 {
-	std::ifstream highscore_file("highscore");
+	std::string highscore_filename = "highscore_";
+	highscore_filename.append(std::to_string(difficutly));
+	std::ifstream highscore_file(highscore_filename);
 	if (highscore_file.is_open())
 	{
 		std::string highscore_file_line;
@@ -257,11 +270,11 @@ int readHighScore()
 	}
 }
 
-void check_missile_collisions()
+void check_missile_collisions(double x_scroll)
 {
 	for (int i = 0; i < missiles.size(); i++)
 	{
-		missiles[i]->move();
+		missiles[i]->move(x_scroll);
 
 		bool destroyed = false;
 
@@ -275,6 +288,10 @@ void check_missile_collisions()
 			destroyed = missiles[i]->ricochet();
 		}
 		else if (blocks->checkCollision(missiles[i]))
+		{
+			destroyed = true;
+		}
+		else if (cave_system->isEnabled && cave_system->checkCollision(missiles[i]))
 		{
 			destroyed = true;
 		}
@@ -344,6 +361,7 @@ int main() {
 	trash_beat = loadMusic("sounds/lebron_trash_beat.wav");
 	main_track = loadMusic("sounds/track_2.wav");
 	start_track = loadMusic("sounds/game_track.wav");
+	gBackground = loadImage("sprites/cave.png");
 
 	srand(time(NULL));
 
@@ -359,14 +377,13 @@ int main() {
 	Bullet* newBullet;
 	std::string fps;//for onscreen fps
 	std::string score; // for onscreen score
-	int high_score = readHighScore(); // For onscreen high score
 	std::string high_score_string;
 
 
 	SDL_Rect bgRect = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
 	SDL_Event e;
 	bool gameon = true;
-	
+
 	Mix_PlayMusic(start_track, -1);
 	current_track = 2;
 	while(start_screen->notStarted){
@@ -394,6 +411,8 @@ int main() {
 		SDL_RenderPresent(gRenderer);
 	}
 
+	int high_score = readHighScore(difficulty); // For onscreen high score
+
 	static TTF_Font *font_20 = TTF_OpenFont("sprites/comic.ttf", 20);
 	static TTF_Font *font_16 = TTF_OpenFont("sprites/comic.ttf", 16);
 	blocks = new MapBlocks(LEVEL_WIDTH, LEVEL_HEIGHT, gRenderer, CaveSystem::CAVE_SYSTEM_FREQ, CaveBlock::CAVE_SYSTEM_PIXEL_WIDTH, openAir, openAirLength, difficulty);
@@ -407,13 +426,14 @@ int main() {
 
 	while(gameon) {
 
-		if (current_track != 0 && !game_over->isGameOver) {
+		if (current_track != 0 && !playerDestroyed && !game_over->isGameOver) {
 			current_track = 0;
 			Mix_PlayMusic(main_track, -1);
 		}
 		// Scroll to the side, unless the end of the level has been reached
 		time_since_horiz_scroll = SDL_GetTicks() - last_horiz_scroll;
 		camX += (double) (SCROLL_SPEED * time_since_horiz_scroll) / 1000;
+		bg_x += (double) (BG_SCROLL_SPEED * time_since_horiz_scroll) / 1000;
 		if (camX > LEVEL_WIDTH - SCREEN_WIDTH) {
 			camX = LEVEL_WIDTH - SCREEN_WIDTH;
 		}
@@ -422,10 +442,10 @@ int main() {
 		while(SDL_PollEvent(&e)) {
 			if (e.type == SDL_QUIT) {
 
-				int current_highscore = readHighScore();
+				int current_highscore = readHighScore(difficulty);
 				if (current_highscore < getScore() || current_highscore == 0)
 				{
-					saveHighScore();
+					saveHighScore(difficulty);
 				}
 
 				gameon = false;
@@ -435,13 +455,13 @@ int main() {
 			{
 				game_over->isGameOver = true;
 			}
-			else if (e.type == SDL_KEYDOWN && e.key.repeat == 0 && e.key.keysym.sym == SDLK_SPACE) {
+			else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_SPACE) {
 				newBullet = player->handleForwardFiring();
 				if (newBullet != nullptr) {
 					bullets.push_back(newBullet);
 				}
 			}
-			else if (e.type == SDL_KEYDOWN && e.key.repeat == 0 && e.key.keysym.sym == SDLK_b) {
+			else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_b) {
 				newBullet = player->handleBackwardFiring();
 				if (newBullet != nullptr) {
 					bullets.push_back(newBullet);
@@ -452,25 +472,50 @@ int main() {
 			}
 			if(game_over->isGameOver)
 			{
-				game_over->handleEvent(e, player, blocks,gRenderer);
+				int over = game_over->handleEvent(e, gRenderer);
+				if(over){
+					gameon = false;
+					close();
+				}
+				// If the game is restarted, reset some things
+				if (!game_over->isGameOver) {
+					delete en;
+					en = new Enemy(100, SCREEN_HEIGHT/2, 125, 53, 200, 200, game_over->diff, gRenderer);
+					delete player;
+					player = new Player(SCREEN_WIDTH/4 - Player::PLAYER_WIDTH/2, SCREEN_HEIGHT/2 - Player::PLAYER_HEIGHT/2, game_over->diff, gRenderer);
+					delete blocks;
+					//random open air area
+					int openAir = rand() % ((LEVEL_WIDTH-50)/72) + 50;
+					int openAirLength = (rand() % 200) + 100;
+					blocks = new MapBlocks(LEVEL_WIDTH, LEVEL_HEIGHT, gRenderer, CaveSystem::CAVE_SYSTEM_FREQ, CaveBlock::CAVE_SYSTEM_PIXEL_WIDTH, openAir, openAirLength, game_over->diff);
+					playerDestroyed = false;
+					camX = 0;
+					camY = LEVEL_HEIGHT - SCREEN_HEIGHT;
+				}
+			}
+		}
+		if(player->getAutoFire()){
+			newBullet = player->handleForwardFiring();
+			if (newBullet != nullptr) {
+				bullets.push_back(newBullet);
+			}
+			newBullet = player->handleBackwardFiring();
+			if (newBullet != nullptr) {
+				bullets.push_back(newBullet);
 			}
 		}
 		// If the kamikaze is offscreen, create a new one
 		if (kam->getX() < -kam->getWidth()) {
-			// delete kam;
-			// kam = new Kamikaze(SCREEN_WIDTH+125, SCREEN_HEIGHT/2, 125, 53, 5000, gRenderer);
 			kam->setX(SCREEN_WIDTH+125);
 			kam->setY(SCREEN_HEIGHT/2);
-			if(difficulty == 3){
-				kam->setArrivalTime(5000);
+			if (difficulty == 3)
+				kam->setArrivalTime(100);
+			else if (difficulty == 2){
+				kam->setArrivalTime(300);
+			}else{
+				kam->setArrivalTime(500);
 			}
-			else if(difficulty == 2){
-				kam->setArrivalTime(7000);
-			}
-			else{
-				kam->setArrivalTime(10000);
-			}
-			
+
 		}
 
 		// Move player
@@ -486,7 +531,14 @@ int main() {
 		missiles = blocks->handleFiring(missiles, player->getPosX(), player->getPosY());
 
 		if (!cave_system->isEnabled){
-			kam->move(player, SCREEN_WIDTH);
+			if(!prev_kam)
+				kam->move(player, SCREEN_WIDTH);
+			else{
+				prev_kam = false;
+				kam->setX(SCREEN_WIDTH+125);
+				kam->setY(SCREEN_HEIGHT/2);
+				kam->setArrivalTime(50);
+			}
 			prev_kam = false;
 		}else{
 			if (!prev_kam){
@@ -494,8 +546,6 @@ int main() {
 				prev_kam = true;
 			}
 			kam->setX(SCREEN_WIDTH+125);
-			kam->setY(SCREEN_HEIGHT/2);
-			kam->setArrivalTime(5000);
 		}
 
 		//move the bullets
@@ -512,39 +562,43 @@ int main() {
 			blocks->addExplosion(kam->getX() + camX, kam->getY() + camY, kam->getWidth(), kam->getHeight(),0);
 			kam->setX(SCREEN_WIDTH+125);
 			kam->setY(SCREEN_HEIGHT/2);
-			kam->setArrivalTime(5000);
+			kam->setArrivalTime(1000);
 		}
 
 		//kam->checkCollision(player, gRenderer);
 		for (int i = bullets.size() - 1; i >= 0; i--) {
 			// If the bullet leaves the screen or hits something, it is destroyed
 			bool destroyed = false;
-			if(bullets[i]->getY() > FLOOR_BOTTOM){
+			int bulletHit = blocks->checkCollision(bullets[i]);
+			if(bulletHit == 2) {
 				destroyed = bullets[i]->ricochetFloor(); // rng chance to ricochet or get destroyed
 			}
-			else if(bullets[i]->getY() < ROOF_TOP){
+			else if(bulletHit == 1) {
 				destroyed = bullets[i]->ricochetRoof(); // rng chance to ricochet or get destroyed
 			}
-			else if (blocks->checkCollision(bullets[i])){
+			else if (bulletHit == 3) {
 				destroyed = true;
 			}
 			else if (player->checkCollisionBullet(bullets[i]->getX(), bullets[i]->getY(), bullets[i]->getWidth(), bullets[i]->getHeight())) {
 				destroyed = true;
 				player->hit(5);
 			}
-			else if (kam->checkCollisionBullet(bullets[i]->getX(), bullets[i]->getY(), bullets[i]->getWidth(), bullets[i]->getHeight())) {
+			else if (kam->checkCollisionBullet(bullets[i]->getX(), bullets[i]->getY(), bullets[i]->getWidth(), bullets[i]->getHeight()) && kam->blast()) {
 				destroyed = true;
 				blocks->addExplosion(kam->getX() + camX, kam->getY() + camY, kam->getWidth(), kam->getHeight(),0);
 				// delete kam;
 				// kam = new Kamikaze(SCREEN_WIDTH+125, SCREEN_HEIGHT/2, 125, 53, 5000, gRenderer);
 				kam->setX(SCREEN_WIDTH+125);
 				kam->setY(SCREEN_HEIGHT/2);
-				kam->setArrivalTime(5000);
+				kam->setArrivalTime(1000);
 			}else if (en->checkCollision(bullets[i]->getX(), bullets[i]->getY(), bullets[i]->getWidth(), bullets[i]->getHeight())){
 				destroyed = true;
 				en->hit(5);
 				if (en->getHealth() == 0)
 					blocks->addExplosion(en->getX() + camX, en->getY() + camY, en->getWidth(), en->getHeight(),0);
+			}
+			else if (cave_system->isEnabled && cave_system->checkCollision(bullets[i])) {
+				destroyed = true;
 			}
 			if (destroyed) {
 				bullets[i]->~Bullet();
@@ -553,7 +607,7 @@ int main() {
 			}
 		}
 
-		check_missile_collisions();
+		check_missile_collisions((double) (BG_SCROLL_SPEED * time_since_horiz_scroll) / 1000);
 
 		// Check collisions between enemy and player
 		if (en->checkCollision(player->getPosX(), player->getPosY(), player->getWidth(), player->getHeight())) {
@@ -583,7 +637,7 @@ int main() {
 			// kam = new Kamikaze(SCREEN_WIDTH+125, SCREEN_HEIGHT/2, 125, 53, 5000, gRenderer);
 			kam->setX(SCREEN_WIDTH+125);
 			kam->setY(SCREEN_HEIGHT/2);
-			kam->setArrivalTime(5000);
+			kam->setArrivalTime(1000);
 		}
 
 		if (en->checkCollision(kam->getX(), kam->getY(), kam->getWidth(), kam->getHeight())){
@@ -593,14 +647,20 @@ int main() {
 			// kam = new Kamikaze(SCREEN_WIDTH+125, SCREEN_HEIGHT/2, 125, 53, 5000, gRenderer);
 			kam->setX(SCREEN_WIDTH+125);
 			kam->setY(SCREEN_HEIGHT/2);
-			kam->setArrivalTime(5000);
+			kam->setArrivalTime(1000);
 		}
 
 		// Clear the screen
 		SDL_RenderClear(gRenderer);
 
+		// Finally removed background drawing from the Player class
+		SDL_Rect bgRect = {-((int)bg_x % SCREEN_WIDTH), 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+		SDL_RenderCopy(gRenderer, gBackground, nullptr, &bgRect);
+		bgRect.x += SCREEN_WIDTH;
+		SDL_RenderCopy(gRenderer, gBackground, nullptr, &bgRect);
+
 		// Draw the player
-		player->render(gRenderer, SCREEN_WIDTH, SCREEN_HEIGHT);
+		if (!playerDestroyed) player->render(gRenderer, SCREEN_WIDTH, SCREEN_HEIGHT);
 		// Draw the enemy
 		en->renderEnemy(gRenderer);
 
@@ -653,25 +713,32 @@ int main() {
 		Text frontText(gRenderer, front_gun, {255, 255, 255, 255}, font_16);
 		frontText.render(gRenderer, 960, SCREEN_HEIGHT - 52);
 
+
+
 		int health = player->getHealth();
 		SDL_Rect outline = {199, SCREEN_HEIGHT - 56, 202, 32};
 		SDL_SetRenderDrawColor(gRenderer, 0x00, 0x00, 0x00, 0xFF);
 		SDL_RenderDrawRect(gRenderer, &outline);
-		if (health > 75) {
-			SDL_SetRenderDrawColor(gRenderer, 0x00, 0x00, 0xFF, 0xFF);
+		if(player->invincePower){
+			SDL_SetRenderDrawColor(gRenderer, 0xD4, 0xAF, 0x37, 0xFF);
 		}
-		else if (health >= 50) {
-			SDL_SetRenderDrawColor(gRenderer, 0x00, 0xFF, 0x00, 0xFF);
-		}
-		else if (health >= 20) {
-			SDL_SetRenderDrawColor(gRenderer, 0xFF, 0xFF, 0x00, 0xFF);
-		}
-		else {
-			SDL_SetRenderDrawColor(gRenderer, 0xFF, 0x00, 0x00, 0xFF);
+		else{
+			if (health > 75) {
+				SDL_SetRenderDrawColor(gRenderer, 0x00, 0x00, 0xFF, 0xFF);
+			}
+			else if (health >= 50) {
+				SDL_SetRenderDrawColor(gRenderer, 0x00, 0xFF, 0x00, 0xFF);
+			}
+			else if (health >= 20) {
+				SDL_SetRenderDrawColor(gRenderer, 0xFF, 0xFF, 0x00, 0xFF);
+			}
+			else {
+				SDL_SetRenderDrawColor(gRenderer, 0xFF, 0x00, 0x00, 0xFF);
+			}
 		}
 		SDL_Rect health_rect = {200, SCREEN_HEIGHT - 55, 2 * health, 30};
 		SDL_RenderFillRect(gRenderer, &health_rect);
-		
+
 		// Draw the bars for forward heat and backwards heat
 		int fHeat = player->getFrontHeat();
 		int bHeat = player->getBackHeat();
@@ -680,7 +747,7 @@ int main() {
 		SDL_RenderDrawRect(gRenderer, &outline);
 		outline = {1049, SCREEN_HEIGHT - 56, 152, 32};
 		SDL_RenderDrawRect(gRenderer, &outline);
-		
+
 		if(player->bshot_maxed){
 			SDL_SetRenderDrawColor(gRenderer, 0xFF, 0x00, 0x00, 0xFF);
 		}
@@ -698,13 +765,14 @@ int main() {
 		heat_rect = {1050, SCREEN_HEIGHT - 55, fHeat * 150 / Player::MAX_SHOOT_HEAT, 30};
 		SDL_RenderFillRect(gRenderer, &heat_rect);
 
-		if(health < 1){
+		if(health < 1 && !playerDestroyed){
+			playerDestroyed = true;
+			time_destroyed = SDL_GetTicks();
+			blocks->addExplosion(player->getPosX() + camX, player->getPosY() + camY, player->getWidth(), player->getHeight(),0);
+			Mix_HaltMusic();
+		}
+		if (playerDestroyed && SDL_GetTicks() > time_destroyed + 1000) {
 			game_over->isGameOver = true;
-			int over = game_over->handleEvent(e, player, blocks,gRenderer);
-			if(over){
-				gameon = false;
-				close();
-			}
 		}
 		if(game_over->isGameOver)
 		{
@@ -714,11 +782,7 @@ int main() {
 			}
 			game_over->stopGame(player, blocks);
 			game_over->render(gRenderer);
-			camX = 0;
-            camY = LEVEL_HEIGHT - SCREEN_HEIGHT;
 		}
-
-
 
 		SDL_RenderPresent(gRenderer);
 	}

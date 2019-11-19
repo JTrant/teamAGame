@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include "Player.h"
 #include "Enemy.h"
+#include "missile.h"
 
 class CaveBlock
 {
@@ -64,6 +65,8 @@ public:
     void moveCaveBlocks(int camX, int camY);
     void checkCollision(Player *p);
     void checkCollision(Enemy *e);
+	bool checkCollision(Bullet *b);
+	bool checkCollision(Missile *m);
     void render(int SCREEN_WIDTH, int SCREEN_HEIGHT, SDL_Renderer *gRenderer);
     PathSequence* getPathSequence();
 	int getStartX();

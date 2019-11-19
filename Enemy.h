@@ -18,6 +18,7 @@ class Enemy
 
         //Initializes the variables, Constructor
         Enemy(int x, int y, int w, int h, int xvel, int yvel, int diff, SDL_Renderer *gRenderer);
+		~Enemy();
 
         //Shows the enemy
         void renderEnemy(SDL_Renderer* gRenderer);

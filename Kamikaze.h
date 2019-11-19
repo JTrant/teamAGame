@@ -34,6 +34,7 @@ class Kamikaze
     int getWidth();
     int getHeight();
     void setArrivalTime(int a);
+    bool blast();
 
     SDL_Rect* getHitbox();
     SDL_Texture* sprite1;
@@ -60,6 +61,7 @@ class Kamikaze
 
 	// Time when the kamikaze arrives on the screen
 	  int arrival_time;
+    bool shootable;
 
     SDL_Rect kam_sprite;
     SDL_Rect kam_hitbox;

@@ -12,11 +12,11 @@ class Missile
     public:
         static const int MISSILE_SIZE = 75;
 
-        Missile(int damage, int blast_radius, double x, double y, double xvel, double yvel, SDL_Renderer* gRenderer);
+        Missile(int damage, int blast_radius, double x, double y, double xvel, double yvel, SDL_Texture* s, SDL_Renderer* gRenderer);
 
         void renderMissile(SDL_Renderer* gRenderer);
 
-        void move();
+        void move(double x_scroll);
 
         // Calculates how far the entity is to this missile
 		double calculate_distance(double entity_x, double entity_y);

@@ -12,6 +12,7 @@ public:
 	void render(SDL_Renderer *gRenderer, int x, int y) const;
 
 	static SDL_Texture *loadFont(SDL_Renderer *gRenderer, const std::string &message_text, const SDL_Color &color, TTF_Font *);
+	~Text();
 
 
 private:

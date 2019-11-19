@@ -52,8 +52,10 @@ void Kamikaze::move(Player* p, int SCREEN_WIDTH){
   tiltAngle = 0;
   if (SDL_GetTicks() > arrival_time && xPos > SCREEN_WIDTH - width - 10) {
     xVelo = -MAX_MOVE_VELO;
+    shootable = false;
   }
   else{
+    shootable = true;
     if (yPos > p->getPosY()+(height/2)){
       tiltAngle = 15;
       yVelo = -MAX_MOVE_VELO;
@@ -125,4 +127,8 @@ SDL_Rect* Kamikaze::getHitbox(){
 
 void Kamikaze::setArrivalTime(int delay){
   arrival_time = SDL_GetTicks()+delay;
+}
+
+bool Kamikaze::blast(){
+  return shootable;
 }

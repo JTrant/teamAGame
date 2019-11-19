@@ -4,21 +4,20 @@
 #include <cmath>
 #include <SDL_image.h>
 
-Missile::Missile(int damage, int blast_radius, double x, double y, double xvel, double yvel, SDL_Renderer* gRenderer) :
+Missile::Missile(int damage, int blast_radius, double x, double y, double xvel, double yvel, SDL_Texture* s, SDL_Renderer* gRenderer) :
 	damage{ damage }, blast_radius{ blast_radius }, xPos{ x }, yPos{ y },
 	xVel { xvel }, yVel{ yvel }, width{ MISSILE_SIZE }, height{ MISSILE_SIZE / 4}
 {
-	missType = rand()%5;//1 in 5 chance of missile being red
-	if(missType < 4){
-		sprite = loadImage("sprites/missile.png", gRenderer);
-	}
-	else{
-		sprite = loadImage("sprites/missile2.png", gRenderer);
-	}
+	sprite = s;
 
 	velocity_magnitude = sqrt(pow(xVel, 2) + pow(yVel, 2));
 
 	pitch = atan(yVel / xVel);
+	if (xVel < 0)
+	{
+		pitch = M_PI + pitch;
+	}
+	std::cout << xVel << " " << yVel << " " << pitch << std::endl;
 	air_time = 0;
 	last_move = SDL_GetTicks();
 }
@@ -45,14 +44,14 @@ SDL_Texture* Missile::loadImage(std::string fname, SDL_Renderer *gRenderer) {
 void Missile::renderMissile(SDL_Renderer* gRenderer)
 {
 	SDL_Rect missile_location = {(int) xPos, (int) yPos, MISSILE_SIZE, MISSILE_SIZE / 4};
-	SDL_RenderCopyEx(gRenderer, sprite, nullptr, &missile_location, pitch * 180.0 / atan(1) * 4, nullptr, SDL_FLIP_NONE);
+	SDL_RenderCopyEx(gRenderer, sprite, nullptr, &missile_location, pitch * 180.0 / M_PI, nullptr, SDL_FLIP_NONE);
 }
 
-void Missile::move()
+void Missile::move(double x_scroll)
 {
 	time_since_move = SDL_GetTicks() - last_move;
 
-	xPos += (double) time_since_move * xVel / 1000;
+	xPos += (double) time_since_move * xVel / 1000 - x_scroll;
 	yPos += (double) time_since_move * yVel / 1000;
 	air_time += time_since_move;
 
